@@ -5,7 +5,9 @@ import pandas as pd
 
 from django.shortcuts import render
 from datetime import datetime
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import csrf_exempt
 from pbo_uas.response import error_with_msg, ok_with_data
 from joblib import load
@@ -27,6 +29,8 @@ kuantitas_scaler = load(kuantitas_scaler_path)
 
 # @csrf_exempt
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication, TokenAuthentication])
+@permission_classes([IsAuthenticated])
 def pred_qty(request):
     try:
         body_unicode = request.body.decode('utf-8')
@@ -65,14 +69,21 @@ def predict(nama: str, umur: float, kode: str, metode_pembayaran: str, hari: str
 
     df = pd.DataFrame(data)
 
+    unseen_label = [False]
+
     def transform_label(column, value):
         if value in le[column].classes_:
             return le[column].transform([value])[0]
         else:
-            return -1  # or len(le[column].classes_) for a new unique label
+            unseen_label[0] = True
+            return -1
 
     for column in ['Hari', 'Nama', 'Kode', 'Unit', 'Metode Pembayaran']:
         df[column] = df[column].apply(lambda x: transform_label(column, x))
+
+    if unseen_label[0]:
+        return 0
+
 
     df['Tanggal'] = pd.to_datetime(df['Tanggal'])
     df['Tanggal'] = (df['Tanggal'] - df['Tanggal'].min()).dt.days
